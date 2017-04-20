@@ -1,0 +1,425 @@
+# XF are the clinical covariates age, smoking, body mass index, and waist circumference
+# XL are the 2183 untargeted plasma lipids deemed phospholipidomic in presentation
+# XP are the 70 targeted serum proteins
+# XFA are the 24 targeted plasma phospholipid fatty acids
+# XO are the 35 targeted plasma non-esterified fatty acids and oxylipids
+# y is polyp type with 3 levels
+
+dir.create("polyp.type")
+setwd("polyp.type")
+
+##### Center, Scale, and Computer G matrix for each omic #####
+# "XF" "XL" "XP" "y" "XO" 
+XL.s<- scale(XL, scale=TRUE, center=TRUE) #centering and scaling
+Gl<-tcrossprod(XL.s)                      #computing crossproductcts
+Gl<-Gl/mean(diag(Gl))                    #scales to an average diagonal value of 1.
+
+XP.s<- scale(XP, scale=TRUE, center=TRUE) #centering and scaling
+Gp<-tcrossprod(XP.s)                      #computing crossproductcts
+Gp<-Gp/mean(diag(Gp))                    #scales to an average diagonal value of 1.
+plot(Gp[,1])                               #observe Gge
+
+XFc<-scale(XF, center=T, scale = F)
+
+XO.s<- scale(XO, scale=TRUE, center=TRUE) #centering and scaling
+Gox<-tcrossprod(XO.s)                      #computing crossproductcts
+Gox<-Gox/mean(diag(Gox))                    #scales to an average diagonal value of 1.
+plot(Gox[,1]) 
+
+XFA.s<- scale(XFA, scale=TRUE, center=TRUE) #centering and scaling
+Gfa<-tcrossprod(XFA.s)                      #computing crossproductcts
+Gfa<-Gfa/mean(diag(Gfa))                    #scales to an average diagonal value of 1.
+plot(Gfa[,1]) 
+
+rm(XF,XL,XP,XF,XO)
+rm(XFA,XFA.s,XL.s, XP.s, XO.s)
+
+##### BGAM MODELS  #####
+
+  ### Single Omic Regressions ###
+    ETA.COV <-list( COV=list(X=XFc, model='FIXED') )
+    ETA.COV.L <-list( COV=list(X=XFc, model='FIXED'), L=list(K=Gl, model='RKHS') )
+    ETA.COV.P <-list( COV=list(X=XFc, model='FIXED'), P=list(K=Gp, model='RKHS') )
+    ETA.COV.O <-list( COV=list(X=XFc, model='FIXED'), O=list(K=Gox, model='RKHS') )
+    ETA.COV.F <-list( COV=list(X=XFc, model='FIXED'), FA=list(K=Gfa, model='RKHS') )
+
+  ### Dual Omic Regressions ###
+    ETA.COV.L.P <-list( COV=list(X=XFc, model='FIXED'), L=list(K=Gl, model='RKHS') , 
+                        P=list(K=Gp, model='RKHS'))
+    ETA.COV.O.P <-list( COV=list(X=XFc, model='FIXED'), O=list(K=Gox, model='RKHS') , 
+                        P=list(K=Gp, model='RKHS'))
+    ETA.COV.F.P <-list( COV=list(X=XFc, model='FIXED'), FA=list(K=Gfa, model='RKHS') , 
+                        P=list(K=Gp, model='RKHS'))
+    ETA.COV.O.L <-list( COV=list(X=XFc, model='FIXED'), O=list(K=Gox, model='RKHS') , 
+                        L=list(K=Gl, model='RKHS'))
+    ETA.COV.O.F <-list( COV=list(X=XFc, model='FIXED'), O=list(K=Gox, model='RKHS') , 
+                        FA=list(K=Gfa, model='RKHS'))
+    ETA.COV.L.F <-list( COV=list(X=XFc, model='FIXED'), L=list(K=Gl, model='RKHS') , 
+                        FA=list(K=Gfa, model='RKHS'))
+
+
+  ### Triple Omic Regressions ###
+    ETA.COV.O.L.P <-list( COV=list(X=XFc, model='FIXED'), O=list(K=Gox, model='RKHS') , 
+                          L=list(K=Gl, model='RKHS'), P=list(K=Gp, model='RKHS') )
+    ETA.COV.F.L.P <-list( COV=list(X=XFc, model='FIXED'), FA=list(K=Gfa, model='RKHS') , 
+                          L=list(K=Gl, model='RKHS'), P=list(K=Gp, model='RKHS') )
+    ETA.COV.F.L.O <-list( COV=list(X=XFc, model='FIXED'), FA=list(K=Gfa, model='RKHS') , 
+                          L=list(K=Gl, model='RKHS'), O=list(K=Gox, model='RKHS') )
+    ETA.COV.F.O.P <-list( COV=list(X=XFc, model='FIXED'), FA=list(K=Gfa, model='RKHS') , 
+                          O=list(K=Gox, model='RKHS'), P=list(K=Gp, model='RKHS') )
+
+  ### FLOP Model Omic Regressions ###
+    ETA.COV.F.L.O.P <-list( COV=list(X=XFc, model='FIXED'), FA=list(K=Gfa, model='RKHS') , 
+                            L=list(K=Gl, model='RKHS'), O=list(K=Gox, model='RKHS'), P=list(K=Gp, model='RKHS') )
+
+numit=300000 # number of iterations
+burn=numit*.1 # number of iterations to burn
+library(BGLR)
+
+    ## Single Omic Regressions ##
+      fm.C = BGLR(y=Y$polyp.severity, ETA=ETA.COV, saveAt='cov_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+      fm.L = BGLR(y=Y$polyp.severity, ETA=ETA.COV.L, saveAt='cov.l_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+      fm.P=BGLR(y=Y$polyp.severity, ETA=ETA.COV.P, saveAt='cov.p_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+      fm.O=BGLR(y=Y$polyp.severity, ETA=ETA.COV.O, saveAt='cov.o_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+      fm.F=BGLR(y=Y$polyp.severity, ETA=ETA.COV.F, saveAt='cov.f_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+  
+    ## Dual Omic Regressions ##
+      fm.L.P=BGLR(y=Y$polyp.severity, ETA=ETA.COV.L.P, saveAt='cov.lp_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+      fm.O.L=BGLR(y=Y$polyp.severity, ETA=ETA.COV.O.L, saveAt='cov.ol_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+      fm.O.P=BGLR(y=Y$polyp.severity, ETA=ETA.COV.O.P, saveAt='cov.op_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+      fm.F.P=BGLR(y=Y$polyp.severity, ETA=ETA.COV.F.P, saveAt='cov.fp_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+      fm.O.F=BGLR(y=Y$polyp.severity, ETA=ETA.COV.O.F, saveAt='cov.of_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+      fm.L.F=BGLR(y=Y$polyp.severity, ETA=ETA.COV.L.F, saveAt='cov.lf_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+    
+    ## Triple Omic Regressions ##
+      fm.O.L.P=BGLR(y=Y$polyp.severity, ETA=ETA.COV.O.L.P, saveAt='cov.olp_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+      fm.F.L.P=BGLR(y=Y$polyp.severity, ETA=ETA.COV.F.L.P, saveAt='cov.flp_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+      fm.F.L.O=BGLR(y=Y$polyp.severity, ETA=ETA.COV.F.L.O, saveAt='cov.flo_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+      fm.F.O.P=BGLR(y=Y$polyp.severity, ETA=ETA.COV.F.O.P, saveAt='cov.fop_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+    
+    ## Final Model Omic Regressions ##
+      fm.F.L.O.P=BGLR(y=Y$polyp.severity, ETA=ETA.COV.F.L.O.P, saveAt='cov.flop_', response_type='gaussian', verbose=F, nIter=numit, burnIn=burn)
+
+
+##### Making Table of Results #####
+  ### Specifying column and row names ###
+    resu<-matrix(NA, nc=6, nr=15)
+    colnames(resu)<-c('varL', 'varP', 'varO', 'varF', 'varE', 'Total.varE')
+    rownames(resu)<-c('COV+L',
+                      'COV+P',
+                      'COV+O', 
+                      'COV+F', 
+                      'COV+L+P', 
+                      'COV+O+L',
+                      'COV+O+P', 
+                      'COV+F+P',
+                      'COV+O+F',
+                      'COV+L+F',
+                      'COV+O+L+P',
+                      'COV+F+L+P',
+                      'COV+F+L+O',
+                      'COV+F+O+P',
+                      'COV+F+L+O+P')
+
+# Only description of how data was extracted from models for phospholipidome explained
+  # Other rows follow similar workflow
+
+## Row1 L ##
+tmp1 <-scan('cov.l_ETA_L_varU.dat'); tmp1 <- tmp1[-c(1:6000)] # variance estimator of L ; #discard burn in
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2) # variance of estimator confidence intervals
+E <-scan("cov.l_varE.dat" ); E <- E[-c(1:6000)] ; # variance of residual error
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2) # variance of residual confidence intervals
+Tvar <- (tmp1+E) # total variance of model
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2) # confidence intervals of  total variance
+# Put phospholipidomic results in a table
+resu[1,]<- c(paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+             NA, NA, NA,
+            paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+            paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, qtmp1, E, qE, Tvar, qT)
+
+## Row2 P
+tmp1 <-scan('cov.p_ETA_P_varU.dat'); tmp1 <- tmp1[-c(1:6000)]
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2)
+E <-scan("cov.p_varE.dat" ); E <- E[-c(1:6000)] ; 
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2)
+Tvar <- (tmp1+E)
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2)
+resu[2,]<- c(NA,
+             paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+             NA, NA,
+             paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, qtmp1, E, qE, Tvar, qT)
+
+## Row3 O
+tmp1 <-scan('cov.o_ETA_O_varU.dat'); tmp1 <- tmp1[-c(1:6000)]
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2)
+E <-scan("cov.o_varE.dat" ); E <- E[-c(1:6000)] ; 
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2)
+Tvar <- (tmp1+E)
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2)
+resu[3,]<- c(NA, NA,
+             paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+             NA, 
+             paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, qtmp1, E, qE, Tvar, qT)
+
+## Row4 FA
+tmp1 <-scan('cov.f_ETA_FA_varU.dat'); tmp1 <- tmp1[-c(1:6000)]
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2)
+E <-scan("cov.f_varE.dat" ); E <- E[-c(1:6000)] ; 
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2)
+Tvar <- (tmp1+E)
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2)
+resu[4,]<- c(NA,NA,NA,
+             paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, qtmp1, E, qE, Tvar, qT)
+
+
+## Row5 LP
+tmp1 <-scan('cov.lp_ETA_L_varU.dat'); tmp1 <- tmp1[-c(1:6000)]
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2)
+tmp2 <-scan('cov.lp_ETA_P_varU.dat'); tmp2 <- tmp2[-c(1:6000)]
+  qtmp2<- round(quantile(x=tmp2, c(0.025, 0.975)),2)
+E <-scan("cov.lp_varE.dat" ); E <- E[-c(1:6000)] ; 
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2)
+Tvar <- (tmp1+tmp2+E)
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2)
+resu[5,]<- c(paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(tmp2),2), paste("[", paste(qtmp2[[1]],qtmp2[[2]], sep = ","), "]", sep = "")),
+             NA,NA,
+             paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, tmp2, qtmp1, qtmp2, E, qE, Tvar, qT)
+
+
+
+## Row6 OL
+tmp1 <-scan('cov.ol_ETA_L_varU.dat'); tmp1 <- tmp1[-c(1:6000)]
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2)
+tmp2 <-scan('cov.ol_ETA_O_varU.dat'); tmp2 <- tmp2[-c(1:6000)]
+  qtmp2<- round(quantile(x=tmp2, c(0.025, 0.975)),2)
+E <-scan("cov.ol_varE.dat" ); E <- E[-c(1:6000)] ; 
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2)
+Tvar <- (tmp1+tmp2+E)
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2)
+resu[6,]<- c(paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+             NA,
+             paste(round(mean(tmp2),2), paste("[", paste(qtmp2[[1]],qtmp2[[2]], sep = ","), "]", sep = "")),
+             NA,
+             paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, tmp2, qtmp1, qtmp2, E, qE, Tvar, qT)
+
+
+## Row7 OP
+tmp1 <-scan('cov.op_ETA_P_varU.dat'); tmp1 <- tmp1[-c(1:6000)]
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2)
+tmp2 <-scan('cov.op_ETA_O_varU.dat'); tmp2 <- tmp2[-c(1:6000)]
+  qtmp2<- round(quantile(x=tmp2, c(0.025, 0.975)),2)
+E <-scan("cov.op_varE.dat" ); E <- E[-c(1:6000)] ; 
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2)
+Tvar <- (tmp1+tmp2+E)
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2)
+resu[7,]<- c(NA,
+             paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(tmp2),2), paste("[", paste(qtmp2[[1]],qtmp2[[2]], sep = ","), "]", sep = "")),
+             NA,
+             paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, tmp2, qtmp1, qtmp2, E, qE, Tvar, qT)
+
+
+
+## Row8 FP
+tmp1 <-scan('cov.fp_ETA_P_varU.dat'); tmp1 <- tmp1[-c(1:6000)]
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2)
+tmp2 <-scan('cov.fp_ETA_FA_varU.dat'); tmp2 <- tmp2[-c(1:6000)]
+  qtmp2<- round(quantile(x=tmp2, c(0.025, 0.975)),2)
+E <-scan("cov.fp_varE.dat" ); E <- E[-c(1:6000)] ; 
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2)
+Tvar <- (tmp1+tmp2+E)
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2)
+resu[8,]<- c(NA,
+             paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+             NA,
+             paste(round(mean(tmp2),2), paste("[", paste(qtmp2[[1]],qtmp2[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, tmp2, qtmp1, qtmp2, E, qE, Tvar, qT)
+
+
+
+## Row9 OF
+tmp1 <-scan('cov.of_ETA_O_varU.dat'); tmp1 <- tmp1[-c(1:6000)]
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2)
+tmp2 <-scan('cov.of_ETA_FA_varU.dat'); tmp2 <- tmp2[-c(1:6000)]
+  qtmp2<- round(quantile(x=tmp2, c(0.025, 0.975)),2)
+E <-scan("cov.of_varE.dat" ); E <- E[-c(1:6000)] ; 
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2)
+Tvar <- (tmp1+tmp2+E)
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2)
+resu[9,]<- c(NA, NA,
+             paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(tmp2),2), paste("[", paste(qtmp2[[1]],qtmp2[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, tmp2, qtmp1, qtmp2, E, qE, Tvar, qT)
+
+
+
+## Row10 LF
+tmp1 <-scan('cov.lf_ETA_L_varU.dat'); tmp1 <- tmp1[-c(1:6000)]
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2)
+tmp2 <-scan('cov.lf_ETA_FA_varU.dat'); tmp2 <- tmp2[-c(1:6000)]
+  qtmp2<- round(quantile(x=tmp2, c(0.025, 0.975)),2)
+E <-scan("cov.lf_varE.dat" ); E <- E[-c(1:6000)] ; 
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2)
+Tvar <- (tmp1+tmp2+E)
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2)
+resu[10,]<- c(paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+             NA,NA,
+             paste(round(mean(tmp2),2), paste("[", paste(qtmp2[[1]],qtmp2[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+             paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, tmp2, qtmp1, qtmp2, E, qE, Tvar, qT)
+
+
+## Row11 OLP
+tmp1 <-scan('cov.olp_ETA_L_varU.dat'); tmp1 <- tmp1[-c(1:6000)]
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2)
+tmp2 <-scan('cov.olp_ETA_P_varU.dat'); tmp2 <- tmp2[-c(1:6000)]
+  qtmp2<- round(quantile(x=tmp2, c(0.025, 0.975)),2)
+tmp3 <-scan('cov.olp_ETA_O_varU.dat'); tmp3 <- tmp3[-c(1:6000)]
+  qtmp3<- round(quantile(x=tmp3, c(0.025, 0.975)),2)
+E <-scan("cov.olp_varE.dat" ); E <- E[-c(1:6000)] ; 
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2)
+Tvar <- (tmp1+tmp2+tmp3+E)
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2)
+resu[11,]<- c(paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(tmp2),2), paste("[", paste(qtmp2[[1]],qtmp2[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(tmp3),2), paste("[", paste(qtmp3[[1]],qtmp3[[2]], sep = ","), "]", sep = "")),
+              NA,
+              paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, tmp2, qtmp1, qtmp2, tmp3, qtmp3, E, qE, Tvar, qT)
+
+
+## Row12 FLP
+tmp1 <-scan('cov.flp_ETA_L_varU.dat'); tmp1 <- tmp1[-c(1:6000)]
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2)
+tmp2 <-scan('cov.flp_ETA_P_varU.dat'); tmp2 <- tmp2[-c(1:6000)]
+  qtmp2<- round(quantile(x=tmp2, c(0.025, 0.975)),2)
+tmp3 <-scan('cov.flp_ETA_FA_varU.dat'); tmp3 <- tmp3[-c(1:6000)]
+  qtmp3<- round(quantile(x=tmp3, c(0.025, 0.975)),2)
+E <-scan("cov.flp_varE.dat" ); E <- E[-c(1:6000)] ; 
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2)
+Tvar <- (tmp1+tmp2+tmp3+E)
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2)
+resu[12,]<- c(paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(tmp2),2), paste("[", paste(qtmp2[[1]],qtmp2[[2]], sep = ","), "]", sep = "")),
+              NA,
+              paste(round(mean(tmp3),2), paste("[", paste(qtmp3[[1]],qtmp3[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, tmp2, qtmp1, qtmp2, tmp3, qtmp3, E, qE, Tvar, qT)
+
+
+## Row13 FLO
+tmp1 <-scan('cov.flo_ETA_L_varU.dat'); tmp1 <- tmp1[-c(1:6000)]
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2)
+tmp2 <-scan('cov.flo_ETA_O_varU.dat'); tmp2 <- tmp2[-c(1:6000)]
+  qtmp2<- round(quantile(x=tmp2, c(0.025, 0.975)),2)
+tmp3 <-scan('cov.flo_ETA_FA_varU.dat'); tmp3 <- tmp3[-c(1:6000)]
+  qtmp3<- round(quantile(x=tmp3, c(0.025, 0.975)),2)
+E <-scan("cov.flo_varE.dat" ); E <- E[-c(1:6000)] ; 
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2)
+Tvar <- (tmp1+tmp2+tmp3+E)
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2)
+resu[13,]<- c(paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+              NA,
+              paste(round(mean(tmp2),2), paste("[", paste(qtmp2[[1]],qtmp2[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(tmp3),2), paste("[", paste(qtmp3[[1]],qtmp3[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, tmp2, qtmp1, qtmp2, tmp3, qtmp3, E, qE, Tvar, qT)
+
+
+## Row14 FOP
+tmp1 <-scan('cov.fop_ETA_P_varU.dat'); tmp1 <- tmp1[-c(1:6000)]
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2)
+tmp2 <-scan('cov.fop_ETA_O_varU.dat'); tmp2 <- tmp2[-c(1:6000)]
+  qtmp2<- round(quantile(x=tmp2, c(0.025, 0.975)),2)
+tmp3 <-scan('cov.fop_ETA_FA_varU.dat'); tmp3 <- tmp3[-c(1:6000)]
+  qtmp3<- round(quantile(x=tmp3, c(0.025, 0.975)),2)
+E <-scan("cov.fop_varE.dat" ); E <- E[-c(1:6000)] ; 
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2)
+Tvar <- (tmp1+tmp2+tmp3+E)
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2)
+resu[14,]<- c(NA,
+              paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(tmp2),2), paste("[", paste(qtmp2[[1]],qtmp2[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(tmp3),2), paste("[", paste(qtmp3[[1]],qtmp3[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, tmp2, qtmp1, qtmp2, tmp3, qtmp3, E, qE, Tvar, qT)
+
+
+
+## Row15 FlOP
+tmp1 <-scan('cov.flop_ETA_L_varU.dat'); tmp1 <- tmp1[-c(1:6000)]
+  qtmp1<- round(quantile(x=tmp1, c(0.025, 0.975)),2)
+tmp2 <-scan('cov.flop_ETA_P_varU.dat'); tmp2 <- tmp2[-c(1:6000)]
+  qtmp2<- round(quantile(x=tmp2, c(0.025, 0.975)),2)
+tmp3 <-scan('cov.flop_ETA_O_varU.dat'); tmp3 <- tmp3[-c(1:6000)]
+  qtmp3<- round(quantile(x=tmp3, c(0.025, 0.975)),2)
+tmp4 <-scan('cov.flop_ETA_FA_varU.dat'); tmp4 <- tmp4[-c(1:6000)]
+  qtmp4<- round(quantile(x=tmp4, c(0.025, 0.975)),2)
+E <-scan("cov.flop_varE.dat" ); E <- E[-c(1:6000)] ; 
+  qE<-round(quantile(x=E, c(0.025, 0.975)),2)
+Tvar <- (tmp1+tmp2+tmp3+tmp4+E)
+  qT <- round(quantile(x=Tvar, c(0.025, 0.975)),2)
+resu[15,]<- c(paste(round(mean(tmp1),2), paste("[", paste(qtmp1[[1]],qtmp1[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(tmp2),2), paste("[", paste(qtmp2[[1]],qtmp2[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(tmp3),2), paste("[", paste(qtmp3[[1]],qtmp3[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(tmp4),2), paste("[", paste(qtmp4[[1]],qtmp4[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(E),2), paste("[", paste(qE[[1]],qE[[2]], sep = ","), "]", sep = "")),
+              paste(round(mean(Tvar),2), paste("[", paste(qT[[1]],qT[[2]], sep = ","), "]", sep = ""))
+)
+
+rm(tmp1, tmp2, qtmp1, qtmp2, tmp3 ,qtmp3, tmp4, qtmp4, E, qE, Tvar, qT)
+
+write.table(resu, file="results.poly.type.csv", sep=",")
+
