@@ -10,3 +10,6 @@ All experimental methods can be found in the attached publications, except the u
       Pickens et al. 2017. Accepted. 
       
 In the meantime, I would be happy to describe how this experimental method was conducted.  Please contact me through Research Gate: https://www.researchgate.net/profile/Charles_Pickens2 or through the email I displayed on the final slide of my presentation.
+
+Samples with shifted chromatography were excluded from the respective data set, which is why in some publications you may see the sample size vary between 123-126, and in the integrative BGAM analysis there were 122 samples.
+
